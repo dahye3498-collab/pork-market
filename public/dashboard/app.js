@@ -1,3 +1,4 @@
+import {recentRange,previousMonthRange,dayRange,runDailyBatch} from './month.mjs';
 const $=id=>document.getElementById(id),fmt=n=>Number.isFinite(n)?n.toLocaleString('ko-KR'):'—';
 const fields=['CTot','CCity','CEast','CWest','c_0513','c_1101eTot'];
 const names={c_1101eTot:'제주 제외',CTot:'전국',CCity:'수도권',CEast:'영남권',CWest:'호남권',c_0513:'농협음성'};
@@ -10,13 +11,13 @@ function num(r,f){return r&&r[f]!==undefined&&r[f]!==''?Number(r[f]):null}
 function price(r,f){return num(r,f+'Cnt')===0?null:num(r,f+'Amt')}
 function dateLabel(v){return v.slice(0,4)+'-'+v.slice(4,6)+'-'+v.slice(6,8)}
 function option(id,values,preferred){const old=$(id).value;$(id).replaceChildren(...values.map(v=>{const o=document.createElement('option');o.value=v;o.textContent=id==='date'?dateLabel(v):v;return o}));$(id).value=values.includes(old)?old:values.includes(preferred)?preferred:values[0]||''}
-function refresh(){rows=merge(sample,saved);option('date',[...new Set(rows.map(r=>r.startYmd))].sort().reverse());option('sex',[...new Set(rows.filter(r=>r.startYmd===$('date').value).map(r=>r.judgeSexNm))],'암');cascade()}
+function refresh(){rows=saved.length?saved:sample;option('date',[...new Set(rows.map(r=>r.startYmd))].sort().reverse());option('sex',[...new Set(rows.filter(r=>r.startYmd===$('date').value).map(r=>r.judgeSexNm))],'전체');cascade()}
 function cascade(){const a=rows.filter(r=>r.startYmd===$('date').value&&r.judgeSexNm===$('sex').value);option('skin',[...new Set(a.map(r=>r.skinNm))],'탕박');const b=a.filter(r=>r.skinNm===$('skin').value);option('grade',[...new Set(b.map(r=>r.gradeNm))],'등외제외');render()}
 function chosen(){return rows.filter(r=>r.startYmd===$('date').value&&r.judgeSexNm===$('sex').value&&r.skinNm===$('skin').value)}
 function render(){const current=chosen(),r=current.find(x=>x.gradeNm===$('grade').value);if(!r)return;const onlySample=!saved.length;$('mode').textContent=onlySample?'제공된 샘플':'가져온 기록 '+saved.length+'개';$('notice').textContent=(onlySample?'현재 2016년 1월 20일 샘플을 보고 있습니다. 최신 시세가 아닙니다. ':'')+'조회 기준: '+dateLabel(r.startYmd)+' · '+r.judgeSexNm+' · '+r.skinNm+' · '+r.gradeNm+' / 선택 기록 기준';
  $('metrics').innerHTML=['c_1101eTot','CTot','CCity','CEast'].map(f=>'<article class="metric"><div class="label">'+names[f]+'</div><div class="value">'+fmt(price(r,f))+' <small>원/kg</small></div><small>경락 '+fmt(num(r,f+'Cnt'))+'두</small></article>').join('');
  $('grades').replaceChildren(...current.map(g=>{const tr=document.createElement('tr');if(g.gradeNm===r.gradeNm)tr.className='active';[g.gradeNm,fmt(price(g,'CTot')),fmt(num(g,'CTotCnt'))+'두'].forEach(v=>{const td=document.createElement('td');td.textContent=v;tr.append(td)});return tr}));
- const history=rows.filter(x=>x.judgeSexNm===r.judgeSexNm&&x.skinNm===r.skinNm&&x.gradeNm===r.gradeNm&&x.startYmd<=r.startYmd&&price(x,$('region').value)!==null).sort((a,b)=>a.startYmd.localeCompare(b.startYmd));draw(history);const prev=history.length>1?history[history.length-2]:null;const diff=prev?price(r,$('region').value)-price(prev,$('region').value):null;
+ const history=rows.filter(x=>x.judgeSexNm===r.judgeSexNm&&x.skinNm===r.skinNm&&x.gradeNm===r.gradeNm&&x.startYmd<=r.startYmd&&(!saved.length||x.startYmd>=$('apiStart').value.replaceAll('-',''))&&price(x,$('region').value)!==null).sort((a,b)=>a.startYmd.localeCompare(b.startYmd));draw(history);const prev=history.length>1?history[history.length-2]:null;const diff=prev?price(r,$('region').value)-price(prev,$('region').value):null;
  const spread=price(r,'CCity')!==null&&price(r,'CEast')!==null?price(r,'CCity')-price(r,'CEast'):null;
  const content=[['지역 간 가격 차이',spread===null?'비교 자료 없음':'수도권이 영남권보다 '+fmt(Math.abs(spread))+'원 '+(spread>=0?'높습니다.':'낮습니다.'),'동일 날짜·성별·돈피·등급 기준'],['이전 기록과 비교',diff===null?'비교할 이전 기록이 없습니다.':names[$('region').value]+' '+fmt(Math.abs(diff))+'원 '+(diff>0?'상승':diff<0?'하락':'보합'),prev?dateLabel(prev.startYmd)+' 기록과 비교':'다른 날짜의 XML을 추가해 보세요.']];$('insights').replaceChildren(...content.map(([title,body,note])=>{const a=document.createElement('article');const label=document.createElement('div');label.textContent=title;const strong=document.createElement('strong');strong.textContent=body;const small=document.createElement('span');small.textContent=note;a.append(label,strong,small);return a}));
  const lines=[dateLabel(r.startYmd)+' 돼지 경락가격','('+r.judgeSexNm+' · '+r.skinNm+' · '+r.gradeNm+')',...['c_1101eTot','CTot','CCity','c_0513','CEast'].map(f=>names[f]+' '+fmt(num(r,f+'Cnt'))+'두 / '+fmt(price(r,f))+'원'),'',dateLabel(r.startYmd)+' 등급별 가격','('+r.judgeSexNm+' · '+r.skinNm+' / 전국)',...current.filter(g=>g.gradeNm!=='모돈').map(g=>g.gradeNm+' : '+fmt(price(g,'CTot'))+'원')];const sow=current.find(g=>g.gradeNm==='모돈');if(sow)lines.push('',''+dateLabel(r.startYmd)+' '+r.skinNm+'(모돈)','전국 '+fmt(num(sow,'CTotCnt'))+'두 / '+fmt(price(sow,'CTot'))+'원');lines.push('','(자료: 축산물품질평가원 API)');$('summary').value=lines.join('\n')}
@@ -28,27 +29,32 @@ $('pasteOpen').onclick=()=>{$('pasteArea').hidden=!$('pasteArea').hidden};$('imp
 $('file').onchange=async e=>{const file=e.target.files[0];if(!file)return;try{const text=await file.text();add(file.name.endsWith('.json')?JSON.parse(text):parseXml(text))}catch(err){$('feedback').textContent=err.message}finally{e.target.value=''}};
 $('export').onclick=()=>{const blob=new Blob([JSON.stringify(merge(sample,saved),null,2)],{type:'application/json'});const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='dahye-pork-records.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
 $('clear').onclick=()=>{if(!saved.length){$('feedback').textContent='가져온 기록이 없습니다.';return}if(confirm('이 브라우저에 가져온 기록을 지울까요? 먼저 내보내기로 보관할 수 있습니다.')){localStorage.removeItem('dahye-pork-v1');saved=[];refresh();$('feedback').textContent='가져온 기록을 지웠습니다. 제공된 샘플은 유지됩니다.'}};
-fetch('sample.xml').then(r=>{if(!r.ok)throw Error('샘플을 불러오지 못했습니다.');return r.text()}).then(t=>{sample=parseXml(t);try{const raw=localStorage.getItem('dahye-pork-v1');saved=raw?validate(JSON.parse(raw)):[]}catch{$('feedback').textContent='저장 기록을 읽지 못해 샘플을 표시합니다.'}refresh()}).catch(e=>{$('notice').textContent=e.message});
+const initialDataReady=fetch('sample.xml').then(r=>{if(!r.ok)throw Error('샘플을 불러오지 못했습니다.');return r.text()}).then(t=>{sample=parseXml(t);try{const raw=localStorage.getItem('dahye-pork-v1');saved=raw?validate(JSON.parse(raw)):[]}catch{$('feedback').textContent='저장 기록을 읽지 못해 샘플을 표시합니다.'}refresh()}).catch(e=>{$('notice').textContent=e.message});
 const todayKst=new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Seoul',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
-$('apiStart').value=todayKst;$('apiEnd').value=todayKst;
-fetch('/api/status').then(async response=>{const status=await response.json();$('apiStatus').textContent=status.configured?'인증키 설정됨 · 조회 가능':response.status===401?'ChatGPT 로그인 필요':'인증키 설정 필요'}).catch(()=>$('apiStatus').textContent='서버 연결 확인 필요');
-$('apiLoad').onclick=async()=>{
+function setRange(range){$('apiStart').value=range.start;$('apiEnd').value=range.end}
+setRange(recentRange(todayKst));$('apiSex').value='all';
+fetch('/api/status').then(async response=>{const status=await response.json();$('apiStatus').textContent=status.configured?'API 조회 준비됨':response.status===401?'ChatGPT 로그인 필요':'인증키 설정 필요';if(status.configured){await initialDataReady;await loadPeriod(true)}}).catch(()=>$('apiStatus').textContent='서버 연결 확인 필요');
+async function loadPeriod(automatic=false){
+ if($('apiLoad').disabled)return;
  const start=$('apiStart').value,end=$('apiEnd').value,sex=$('apiSex').value,skin=$('apiSkin').value;
- const first=Date.parse(start+'T00:00:00Z'),last=Date.parse(end+'T00:00:00Z'),days=Math.round((last-first)/86400000)+1;
- if(!Number.isFinite(days)||days<1||days>31||end>todayKst){$('apiFeedback').textContent='오늘 이전의 날짜로 시작일과 종료일을 선택해주세요. 조회 범위는 최대 31일입니다.';return}
- $('apiLoad').disabled=true;let count=0,empty=0;
- try{for(let i=0;i<days;i++){
-  const date=new Date(first+i*86400000).toISOString().slice(0,10);$('apiFeedback').textContent=date+' 조회 중 ('+(i+1)+'/'+days+')';
-  const response=await fetch('/api/prices?'+new URLSearchParams({date,sex,skin}),{cache:'no-store'}),data=await response.json();
-  if(!response.ok)throw Error(data.error||'조회에 실패했습니다.');
-  const doc=new DOMParser().parseFromString(data.xml,'application/xml');
-  if(!doc.querySelector('items > item')){empty++;continue}
-  const records=parseXml(data.xml);add(records);count+=records.length;
-  $('date').value=records[0].startYmd;option('sex',[...new Set(rows.filter(r=>r.startYmd===$('date').value).map(r=>r.judgeSexNm))],records[0].judgeSexNm);$('sex').value=records[0].judgeSexNm;cascade();$('skin').value=records[0].skinNm;render();
- }
- $('apiFeedback').textContent=days+'일 조회 완료 · '+count+'개 항목 저장 · 거래 자료 없는 날짜 '+empty+'일. 같은 조건의 기존 기록은 갱신했습니다.';
- }catch(e){$('apiFeedback').textContent=e.message+(count?' / 앞서 받은 '+count+'개 항목은 저장했습니다.':'')}
- finally{$('apiLoad').disabled=false}
-};
+ let dates;try{dates=dayRange(start,end);if(end>todayKst)throw Error('오늘까지의 날짜를 선택해주세요.')}catch(e){$('apiFeedback').textContent=e.message;return}
+ const queryKey=[start,end,sex,skin].join('|');
+ if(automatic){try{const last=JSON.parse(localStorage.getItem('dahye-pork-last-query')||'null');if(last?.key===queryKey&&Date.now()-last.time<600000&&saved.length){selectLatest(start,end,sex,skin);$('apiFeedback').textContent='최근 10분 내 조회한 한 달 기록을 표시합니다. 새로 조회하려면 기간 조회를 눌러주세요.';return}}catch{}}
+ const controls=['apiLoad','recent30','lastMonth','apiStart','apiEnd','apiSex','apiSkin'];controls.forEach(id=>$(id).disabled=true);$('apiStatus').textContent='기간 자료 조회 중';
+ try{
+  const batch=await runDailyBatch(dates,async date=>{
+   const response=await fetch('/api/prices?'+new URLSearchParams({date,sex,skin}),{cache:'no-store'}),data=await response.json();if(!response.ok)throw Error(data.error||'조회에 실패했습니다.');
+   const doc=new DOMParser().parseFromString(data.xml,'application/xml');if(!doc.querySelector('items > item'))return [];
+   const records=parseXml(data.xml);return records.some(r=>Number(r.CTotCnt)>0&&Number(r.CTotAmt)>0)?records:[];
+  },({done,total,errors})=>{$('apiFeedback').textContent='한 달 자료 조회 중 '+done+'/'+total+'일'+(errors?' · 실패 '+errors+'일':'');$('apiProgress').value=done/total});
+  const records=batch.results.flatMap(r=>r.value),empty=batch.results.filter(r=>!r.value.length).length;
+  if(records.length){add(records);selectLatest(start,end,sex,skin)}
+  $('apiFeedback').textContent=dates.length+'일 조회 완료 · 거래일 '+(batch.results.length-empty)+'일 · 미거래 '+empty+'일 · 저장 '+records.length+'개 항목'+(batch.errors.length?' · 실패 '+batch.errors.length+'일 ('+batch.errors.map(e=>e.date).join(', ')+'): '+batch.errors[0].message:'');
+  $('apiStatus').textContent=batch.errors.length?'일부 조회 실패':'기간 조회 완료';
+  if(!batch.errors.length){try{localStorage.setItem('dahye-pork-last-query',JSON.stringify({key:queryKey,time:Date.now()}))}catch{}}
+ }catch(e){$('apiFeedback').textContent=e.message;$('apiStatus').textContent='조회 확인 필요'}finally{controls.forEach(id=>$(id).disabled=false)}
+}
+function selectLatest(start,end,sex,skin){const sexName={all:'전체','025001':'암','025003':'거세'}[sex],skinName=skin==='Y'?'탕박':'박피';const matching=rows.filter(r=>r.startYmd>=start.replaceAll('-','')&&r.startYmd<=end.replaceAll('-','')&&r.judgeSexNm===sexName&&r.skinNm===skinName&&Number(r.CTotCnt)>0).sort((a,b)=>b.startYmd.localeCompare(a.startYmd));if(!matching.length)return;$('date').value=matching[0].startYmd;option('sex',[...new Set(rows.filter(r=>r.startYmd===$('date').value).map(r=>r.judgeSexNm))],sexName);$('sex').value=sexName;cascade();$('skin').value=skinName;option('grade',[...new Set(chosen().map(r=>r.gradeNm))],'등외제외');render()}
+$('apiLoad').onclick=()=>loadPeriod();$('recent30').onclick=()=>{setRange(recentRange(todayKst));loadPeriod()};$('lastMonth').onclick=()=>{setRange(previousMonthRange(todayKst));loadPeriod()};
 
 
