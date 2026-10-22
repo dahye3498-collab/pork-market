@@ -1,6 +1,6 @@
 const $=id=>document.getElementById(id),fmt=n=>Number.isFinite(n)?n.toLocaleString('ko-KR'):'—';
-const fields=['CTot','CCity','CEast','CWest','c_0513'];
-const names={CTot:'전국',CCity:'수도권',CEast:'영남권',CWest:'호남권',c_0513:'농협음성'};
+const fields=['CTot','CCity','CEast','CWest','c_0513','c_1101eTot'];
+const names={c_1101eTot:'제주 제외',CTot:'전국',CCity:'수도권',CEast:'영남권',CWest:'호남권',c_0513:'농협음성'};
 let sample=[],saved=[],rows=[];
 const key=r=>[r.startYmd,r.judgeSexNm,r.skinNm,r.gradeNm].join('|');
 function merge(a,b){return [...new Map([...a,...b].map(r=>[key(r),r])).values()]}
@@ -13,13 +13,13 @@ function option(id,values,preferred){const old=$(id).value;$(id).replaceChildren
 function refresh(){rows=merge(sample,saved);option('date',[...new Set(rows.map(r=>r.startYmd))].sort().reverse());option('sex',[...new Set(rows.filter(r=>r.startYmd===$('date').value).map(r=>r.judgeSexNm))],'암');cascade()}
 function cascade(){const a=rows.filter(r=>r.startYmd===$('date').value&&r.judgeSexNm===$('sex').value);option('skin',[...new Set(a.map(r=>r.skinNm))],'탕박');const b=a.filter(r=>r.skinNm===$('skin').value);option('grade',[...new Set(b.map(r=>r.gradeNm))],'등외제외');render()}
 function chosen(){return rows.filter(r=>r.startYmd===$('date').value&&r.judgeSexNm===$('sex').value&&r.skinNm===$('skin').value)}
-function render(){const current=chosen(),r=current.find(x=>x.gradeNm===$('grade').value);if(!r)return;const onlySample=!saved.length;$('mode').textContent=onlySample?'제공된 샘플 · API 미연결':'가져온 기록 '+saved.length+'개 · API 미연결';$('notice').textContent=(onlySample?'현재 2016년 1월 20일 샘플을 보고 있습니다. 최신 시세가 아닙니다. ':'')+'조회 기준: '+dateLabel(r.startYmd)+' · '+r.judgeSexNm+' · '+r.skinNm+' · '+r.gradeNm+' / 자동 조회 미연결';
- $('metrics').innerHTML=fields.slice(0,3).concat('c_0513').map(f=>'<article class="metric"><div class="label">'+names[f]+'</div><div class="value">'+fmt(price(r,f))+' <small>원/kg</small></div><small>경락 '+fmt(num(r,f+'Cnt'))+'두</small></article>').join('');
+function render(){const current=chosen(),r=current.find(x=>x.gradeNm===$('grade').value);if(!r)return;const onlySample=!saved.length;$('mode').textContent=onlySample?'제공된 샘플':'가져온 기록 '+saved.length+'개';$('notice').textContent=(onlySample?'현재 2016년 1월 20일 샘플을 보고 있습니다. 최신 시세가 아닙니다. ':'')+'조회 기준: '+dateLabel(r.startYmd)+' · '+r.judgeSexNm+' · '+r.skinNm+' · '+r.gradeNm+' / 선택 기록 기준';
+ $('metrics').innerHTML=['c_1101eTot','CTot','CCity','CEast'].map(f=>'<article class="metric"><div class="label">'+names[f]+'</div><div class="value">'+fmt(price(r,f))+' <small>원/kg</small></div><small>경락 '+fmt(num(r,f+'Cnt'))+'두</small></article>').join('');
  $('grades').replaceChildren(...current.map(g=>{const tr=document.createElement('tr');if(g.gradeNm===r.gradeNm)tr.className='active';[g.gradeNm,fmt(price(g,'CTot')),fmt(num(g,'CTotCnt'))+'두'].forEach(v=>{const td=document.createElement('td');td.textContent=v;tr.append(td)});return tr}));
  const history=rows.filter(x=>x.judgeSexNm===r.judgeSexNm&&x.skinNm===r.skinNm&&x.gradeNm===r.gradeNm&&x.startYmd<=r.startYmd&&price(x,$('region').value)!==null).sort((a,b)=>a.startYmd.localeCompare(b.startYmd));draw(history);const prev=history.length>1?history[history.length-2]:null;const diff=prev?price(r,$('region').value)-price(prev,$('region').value):null;
  const spread=price(r,'CCity')!==null&&price(r,'CEast')!==null?price(r,'CCity')-price(r,'CEast'):null;
  const content=[['지역 간 가격 차이',spread===null?'비교 자료 없음':'수도권이 영남권보다 '+fmt(Math.abs(spread))+'원 '+(spread>=0?'높습니다.':'낮습니다.'),'동일 날짜·성별·돈피·등급 기준'],['이전 기록과 비교',diff===null?'비교할 이전 기록이 없습니다.':names[$('region').value]+' '+fmt(Math.abs(diff))+'원 '+(diff>0?'상승':diff<0?'하락':'보합'),prev?dateLabel(prev.startYmd)+' 기록과 비교':'다른 날짜의 XML을 추가해 보세요.']];$('insights').replaceChildren(...content.map(([title,body,note])=>{const a=document.createElement('article');const label=document.createElement('div');label.textContent=title;const strong=document.createElement('strong');strong.textContent=body;const small=document.createElement('span');small.textContent=note;a.append(label,strong,small);return a}));
- const lines=[dateLabel(r.startYmd)+' 돼지 경락가격','('+r.judgeSexNm+' · '+r.skinNm+' · '+r.gradeNm+')',...['CTot','CCity','c_0513','CEast'].map(f=>names[f]+' '+fmt(num(r,f+'Cnt'))+'두 / '+fmt(price(r,f))+'원'),'',dateLabel(r.startYmd)+' 등급별 가격','('+r.judgeSexNm+' · '+r.skinNm+' / 전국)',...current.filter(g=>g.gradeNm!=='모돈').map(g=>g.gradeNm+' : '+fmt(price(g,'CTot'))+'원')];const sow=current.find(g=>g.gradeNm==='모돈');if(sow)lines.push('',''+dateLabel(r.startYmd)+' '+r.skinNm+'(모돈)','전국 '+fmt(num(sow,'CTotCnt'))+'두 / '+fmt(price(sow,'CTot'))+'원');lines.push('','(자료: 축산물품질평가원 API)');$('summary').value=lines.join('\n')}
+ const lines=[dateLabel(r.startYmd)+' 돼지 경락가격','('+r.judgeSexNm+' · '+r.skinNm+' · '+r.gradeNm+')',...['c_1101eTot','CTot','CCity','c_0513','CEast'].map(f=>names[f]+' '+fmt(num(r,f+'Cnt'))+'두 / '+fmt(price(r,f))+'원'),'',dateLabel(r.startYmd)+' 등급별 가격','('+r.judgeSexNm+' · '+r.skinNm+' / 전국)',...current.filter(g=>g.gradeNm!=='모돈').map(g=>g.gradeNm+' : '+fmt(price(g,'CTot'))+'원')];const sow=current.find(g=>g.gradeNm==='모돈');if(sow)lines.push('',''+dateLabel(r.startYmd)+' '+r.skinNm+'(모돈)','전국 '+fmt(num(sow,'CTotCnt'))+'두 / '+fmt(price(sow,'CTot'))+'원');lines.push('','(자료: 축산물품질평가원 API)');$('summary').value=lines.join('\n')}
 function draw(all){const data=all.slice(-90),f=$('region').value;$('chart').replaceChildren();$('chartNote').textContent=names[f]+' · 최대 최근 90개 일별 기록 · 빈 날짜는 보간하지 않습니다.';if(data.length<2){$('chart').innerHTML='<div class="empty">아직 하루치 기록만 있어요.<br>다른 날짜의 자료를 추가하면<br>가격 흐름이 나타납니다.</div>';return}const width=640,height=220,left=60,right=20,top=20,bottom=35;const vals=data.map(r=>price(r,f)),low=Math.min(...vals)-100,high=Math.max(...vals)+100;const x=i=>left+i/(data.length-1)*(width-left-right),y=v=>top+(high-v)/(high-low)*(height-top-bottom);const points=vals.map((v,i)=>x(i)+','+y(v)).join(' ');let svg='<svg viewBox="0 0 640 220" role="img" aria-label="일별 가격 추이">';for(let i=0;i<3;i++){const v=low+(high-low)*i/2;svg+='<line x1="60" x2="620" y1="'+y(v)+'" y2="'+y(v)+'" stroke="#e6ece1"/><text x="48" y="'+(y(v)+4)+'" text-anchor="end" font-size="11" fill="#72816d">'+fmt(Math.round(v))+'</text>'}svg+='<polyline points="'+points+'" fill="none" stroke="#247155" stroke-width="3"/>';svg+=data.map((r,i)=>'<circle cx="'+x(i)+'" cy="'+y(vals[i])+'" r="3" fill="#247155"><title>'+dateLabel(r.startYmd)+' '+fmt(vals[i])+'원</title></circle>').join('');svg+='<text x="60" y="215" fill="#72816d" font-size="11">'+dateLabel(data[0].startYmd)+'</text><text x="620" y="215" text-anchor="end" fill="#72816d" font-size="11">'+dateLabel(data.at(-1).startYmd)+'</text></svg>';$('chart').innerHTML=svg}
 function add(data){const next=merge(saved,validate(data));try{localStorage.setItem('dahye-pork-v1',JSON.stringify(next))}catch{throw Error('브라우저 저장 공간이 부족합니다. 자료를 내보낸 후 기록을 정리해주세요.')}saved=next;refresh();$('feedback').textContent=data.length+'개 항목을 확인했습니다. 같은 날짜·조건의 기록은 새 값으로 갱신됩니다.'}
 $('date').onchange=()=>{option('sex',[...new Set(rows.filter(r=>r.startYmd===$('date').value).map(r=>r.judgeSexNm))],'암');cascade()};$('sex').onchange=cascade;$('skin').onchange=()=>{option('grade',[...new Set(rows.filter(r=>r.startYmd===$('date').value&&r.judgeSexNm===$('sex').value&&r.skinNm===$('skin').value).map(r=>r.gradeNm))],'등외제외');render()};$('grade').onchange=render;$('region').onchange=render;
@@ -29,3 +29,26 @@ $('file').onchange=async e=>{const file=e.target.files[0];if(!file)return;try{co
 $('export').onclick=()=>{const blob=new Blob([JSON.stringify(merge(sample,saved),null,2)],{type:'application/json'});const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='dahye-pork-records.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
 $('clear').onclick=()=>{if(!saved.length){$('feedback').textContent='가져온 기록이 없습니다.';return}if(confirm('이 브라우저에 가져온 기록을 지울까요? 먼저 내보내기로 보관할 수 있습니다.')){localStorage.removeItem('dahye-pork-v1');saved=[];refresh();$('feedback').textContent='가져온 기록을 지웠습니다. 제공된 샘플은 유지됩니다.'}};
 fetch('sample.xml').then(r=>{if(!r.ok)throw Error('샘플을 불러오지 못했습니다.');return r.text()}).then(t=>{sample=parseXml(t);try{const raw=localStorage.getItem('dahye-pork-v1');saved=raw?validate(JSON.parse(raw)):[]}catch{$('feedback').textContent='저장 기록을 읽지 못해 샘플을 표시합니다.'}refresh()}).catch(e=>{$('notice').textContent=e.message});
+const todayKst=new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Seoul',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+$('apiStart').value=todayKst;$('apiEnd').value=todayKst;
+fetch('/api/status').then(async response=>{const status=await response.json();$('apiStatus').textContent=status.configured?'인증키 설정됨 · 조회 가능':response.status===401?'ChatGPT 로그인 필요':'인증키 설정 필요'}).catch(()=>$('apiStatus').textContent='서버 연결 확인 필요');
+$('apiLoad').onclick=async()=>{
+ const start=$('apiStart').value,end=$('apiEnd').value,sex=$('apiSex').value,skin=$('apiSkin').value;
+ const first=Date.parse(start+'T00:00:00Z'),last=Date.parse(end+'T00:00:00Z'),days=Math.round((last-first)/86400000)+1;
+ if(!Number.isFinite(days)||days<1||days>31||end>todayKst){$('apiFeedback').textContent='오늘 이전의 날짜로 시작일과 종료일을 선택해주세요. 조회 범위는 최대 31일입니다.';return}
+ $('apiLoad').disabled=true;let count=0,empty=0;
+ try{for(let i=0;i<days;i++){
+  const date=new Date(first+i*86400000).toISOString().slice(0,10);$('apiFeedback').textContent=date+' 조회 중 ('+(i+1)+'/'+days+')';
+  const response=await fetch('/api/prices?'+new URLSearchParams({date,sex,skin}),{cache:'no-store'}),data=await response.json();
+  if(!response.ok)throw Error(data.error||'조회에 실패했습니다.');
+  const doc=new DOMParser().parseFromString(data.xml,'application/xml');
+  if(!doc.querySelector('items > item')){empty++;continue}
+  const records=parseXml(data.xml);add(records);count+=records.length;
+  $('date').value=records[0].startYmd;option('sex',[...new Set(rows.filter(r=>r.startYmd===$('date').value).map(r=>r.judgeSexNm))],records[0].judgeSexNm);$('sex').value=records[0].judgeSexNm;cascade();$('skin').value=records[0].skinNm;render();
+ }
+ $('apiFeedback').textContent=days+'일 조회 완료 · '+count+'개 항목 저장 · 거래 자료 없는 날짜 '+empty+'일. 같은 조건의 기존 기록은 갱신했습니다.';
+ }catch(e){$('apiFeedback').textContent=e.message+(count?' / 앞서 받은 '+count+'개 항목은 저장했습니다.':'')}
+ finally{$('apiLoad').disabled=false}
+};
+
+

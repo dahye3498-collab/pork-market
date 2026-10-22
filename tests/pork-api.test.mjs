@@ -1,0 +1,10 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import {buildQuery,fetchPrices} from '../lib/pork-api.mjs';
+const query=new URLSearchParams({date:'2016-01-20',sex:'025001',skin:'Y'});
+test('one-day query and single encoding',()=>{const url=buildQuery(query,'test%2Bkey');assert.equal(url.searchParams.get('serviceKey'),'test+key');assert.equal(url.searchParams.get('startYmd'),'20160120');assert.equal(url.searchParams.get('endYmd'),'20160120');assert.equal(url.searchParams.get('sexCd'),'025001')});
+test('reject malformed dates and filters',()=>{assert.throws(()=>buildQuery(new URLSearchParams({date:'2026-02-30'}),'key'));assert.throws(()=>buildQuery(new URLSearchParams({date:'2026-10-21',sex:'evil'}),'key'));assert.throws(()=>buildQuery(query,''))});
+test('sample preserves official aggregate, Jeju exclusion and sow row',async()=>{const xml=await fetchPrices(query,'secret',async()=>new Response(readFileSync('public/dashboard/sample.xml','utf8')));assert.match(xml,/<CTotAmt>4602<\/CTotAmt>/);assert.match(xml,/<gradeNm>모돈<\/gradeNm>/);assert.match(xml,/<c_1101eTotAmt>4210<\/c_1101eTotAmt>/);assert.doesNotMatch(xml,/gradeCd/)});
+test('does not return credentials or upstream error detail',async()=>{const xml=await fetchPrices(query,'secret',async()=>new Response('<response><resultCode>00</resultCode><serviceKey>secret</serviceKey><items></items></response>'));assert.doesNotMatch(xml,/secret|serviceKey/);await assert.rejects(fetchPrices(query,'secret',async()=>new Response('<resultCode>30</resultCode>')),{message:'API_AUTH_FAILED'})});
+test('network errors are generic',async()=>{await assert.rejects(fetchPrices(query,'secret',async()=>{throw Error('secret')}),{message:'UPSTREAM_UNAVAILABLE'})});
