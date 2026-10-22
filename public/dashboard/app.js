@@ -2,6 +2,8 @@ import {recentRange,previousMonthRange,dayRange,skinTasks,runDailyBatch} from '.
 const $=id=>document.getElementById(id),fmt=n=>Number.isFinite(n)?n.toLocaleString('ko-KR'):'—';
 const fields=['CTot','CCity','CEast','CWest','c_0513','c_1101eTot'];
 const names={c_1101eTot:'제주 제외',CTot:'전국',CCity:'수도권',CEast:'영남권',CWest:'호남권',c_0513:'농협음성'};
+const snapshotMode=document.querySelector('meta[name="pork-data-mode"]')?.content==='snapshot';
+let snapshot=null;
 let sample=[],saved=[],rows=[];
 const key=r=>[r.startYmd,r.judgeSexNm,r.skinNm,r.gradeNm].join('|');
 function merge(a,b){return [...new Map([...a,...b].map(r=>[key(r),r])).values()]}
@@ -32,21 +34,23 @@ $('pasteOpen').onclick=()=>{$('pasteArea').hidden=!$('pasteArea').hidden};$('imp
 $('file').onchange=async e=>{const file=e.target.files[0];if(!file)return;try{const text=await file.text();add(file.name.endsWith('.json')?JSON.parse(text):parseXml(text))}catch(err){$('feedback').textContent=err.message}finally{e.target.value=''}};
 $('export').onclick=()=>{const blob=new Blob([JSON.stringify(merge(sample,saved),null,2)],{type:'application/json'});const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='pork-market-records.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
 $('clear').onclick=()=>{if(!saved.length){$('feedback').textContent='가져온 기록이 없습니다.';return}if(confirm('이 브라우저에 가져온 기록을 지울까요? 먼저 내보내기로 보관할 수 있습니다.')){localStorage.removeItem('dahye-pork-v1');saved=[];refresh();$('feedback').textContent='가져온 기록을 지웠습니다. 제공된 샘플은 유지됩니다.'}};
-const initialDataReady=fetch('sample.xml').then(r=>{if(!r.ok)throw Error('샘플을 불러오지 못했습니다.');return r.text()}).then(t=>{sample=parseXml(t);try{const raw=localStorage.getItem('dahye-pork-v1');saved=raw?validate(JSON.parse(raw)):[]}catch{$('feedback').textContent='저장 기록을 읽지 못해 샘플을 표시합니다.'}refresh()}).catch(e=>{$('notice').textContent=e.message});
+const initialDataReady=(snapshotMode?fetch('data/records.json',{cache:'no-store'}).then(async r=>{if(!r.ok)throw Error('수집 자료를 불러오지 못했습니다.');snapshot=await r.json();saved=validate(snapshot.records);refresh();$('feedback').textContent='자료 갱신: '+new Date(snapshot.updatedAt).toLocaleString('ko-KR')+' · 매일 오전 10:10, 오후 6:10 수집 예정 (한국시간). 당일 자료는 수정될 수 있습니다.'}):fetch('sample.xml').then(r=>{if(!r.ok)throw Error('샘플을 불러오지 못했습니다.');return r.text()}).then(t=>{sample=parseXml(t);try{const raw=localStorage.getItem('dahye-pork-v1');saved=raw?validate(JSON.parse(raw)):[]}catch{$('feedback').textContent='저장 기록을 읽지 못해 샘플을 표시합니다.'}refresh()})).catch(e=>{$('notice').textContent=e.message;$('apiStatus').textContent='수집 자료 확인 필요'});
 const todayKst=new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Seoul',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
 function setRange(range){$('apiStart').value=range.start;$('apiEnd').value=range.end}
 setRange(recentRange(todayKst));$('apiSex').value='all';$('apiSkin').value='both';
-fetch('/api/status').then(async response=>{const status=await response.json();$('apiStatus').textContent=status.configured?'API 조회 준비됨':response.status===401?'ChatGPT 로그인 필요':'인증키 설정 필요';if(status.configured){await initialDataReady;await loadPeriod(true)}}).catch(()=>$('apiStatus').textContent='서버 연결 확인 필요');
+if(snapshotMode){initialDataReady.then(()=>{if(snapshot)loadPeriod(true)})}else fetch('/api/status').then(async response=>{const status=await response.json();$('apiStatus').textContent=status.configured?'API 조회 준비됨':response.status===401?'ChatGPT 로그인 필요':'인증키 설정 필요';if(status.configured){await initialDataReady;await loadPeriod(true)}}).catch(()=>$('apiStatus').textContent='서버 연결 확인 필요');
 async function loadPeriod(automatic=false){
  if($('apiLoad').disabled)return;
  const start=$('apiStart').value,end=$('apiEnd').value,sex=$('apiSex').value,skin=$('apiSkin').value;
  let dates;try{dates=dayRange(start,end);if(end>todayKst)throw Error('오늘까지의 날짜를 선택해주세요.')}catch(e){$('apiFeedback').textContent=e.message;return}
- const queryKey=[start,end,sex,skin].join('|');
+ const queryKey=[start,end,sex,skin,snapshot?.updatedAt||''].join('|');
  if(automatic){try{const last=JSON.parse(localStorage.getItem('dahye-pork-last-query')||'null');if(last?.key===queryKey&&Date.now()-last.time<600000&&saved.length){selectLatest(start,end,sex,skin);$('apiFeedback').textContent='최근 10분 내 조회한 한 달 기록을 표시합니다. 새로 조회하려면 기간 조회를 눌러주세요.';return}}catch{}}
  const controls=['apiLoad','recent30','lastMonth','apiStart','apiEnd','apiSex','apiSkin'];controls.forEach(id=>$(id).disabled=true);$('apiStatus').textContent='기간 자료 조회 중';
  try{
   const tasks=skinTasks(dates,skin);const batch=await runDailyBatch(tasks,async task=>{
-   const [date,skinCode]=task.split('|');const response=await fetch('/api/prices?'+new URLSearchParams({date,sex,skin:skinCode}),{cache:'no-store'}),data=await response.json();if(!response.ok)throw Error(data.error||'조회에 실패했습니다.');
+   const [date,skinCode]=task.split('|');
+   if(snapshotMode){if(!snapshot?.coverage.includes([date,sex,skinCode].join('|')))throw Error('아직 수집되지 않은 날짜입니다.');return snapshot.records.filter(r=>r.startYmd===date.replaceAll('-','')&&r.judgeSexNm==={all:'전체','025001':'암','025003':'거세'}[sex]&&r.skinNm===(skinCode==='Y'?'탕박':'박피'))}
+   const response=await fetch('/api/prices?'+new URLSearchParams({date,sex,skin:skinCode}),{cache:'no-store'}),data=await response.json();if(!response.ok)throw Error(data.error||'조회에 실패했습니다.');
    const doc=new DOMParser().parseFromString(data.xml,'application/xml');if(!doc.querySelector('items > item'))return [];
    const records=parseXml(data.xml);return records.some(r=>Number(r.CTotCnt)>0&&Number(r.CTotAmt)>0)?records:[];
   },({done,total,errors})=>{$('apiFeedback').textContent=(skin==='both'?'탕박·박피 ':'')+'한 달 자료 조회 중 '+done+'/'+total+'건'+(errors?' · 실패 '+errors+'건':'');$('apiProgress').value=done/total});
