@@ -16,5 +16,5 @@ export async function GET(request:Request){
   let xml:string;try{xml=await work}finally{pending.delete(id)}
   if(cache.size>=500)cache.delete(cache.keys().next().value!);cache.set(id,{xml,until:Date.now()+600000});
   return Response.json({xml,cached:false},{headers:{'Cache-Control':'no-store'}});
- }catch(e){const code=e instanceof Error?e.message:'';return Response.json({error:messages[code]||'조회 중 오류가 발생했습니다.'},{status:code==='API_KEY_MISSING'?503:code.startsWith('INVALID_')?400:502,headers:{'Cache-Control':'no-store'}})}
+ }catch(e){const code=e instanceof Error?e.message:'';const detail=/^UPSTREAM_HTTP_\d{3}$/.test(code)?'축평원 서버가 HTTP '+code.slice(-3)+' 응답을 반환했습니다.':code==='UPSTREAM_TIMEOUT'?'축평원 서버 응답 시간이 초과됐습니다.':messages[code]||'조회 중 오류가 발생했습니다.';return Response.json({error:detail},{status:code==='API_KEY_MISSING'?503:code.startsWith('INVALID_')?400:502,headers:{'Cache-Control':'no-store'}})}
 }
