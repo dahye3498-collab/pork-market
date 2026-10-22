@@ -13,7 +13,7 @@
 
 서버 환경변수 `EKAPE_API_KEY`에 공공데이터포털에서 발급한 키를 설정합니다. 일반 인증키와 URL 인코딩된 키를 지원합니다. 키를 저장소나 프런트엔드 코드에 넣지 마세요. `.env.example`에는 이름만 기재되어 있습니다. Sites에서는 런타임 비밀 설정 후 다시 게시해야 적용됩니다.
 
-API: `https://data.ekape.or.kr/openapi-data/service/user/grade/auct/pigGrade`
+API: `http://data.ekape.or.kr/openapi-data/service/user/grade/auct/pigGrade`
 
 요청 항목: `serviceKey`, `startYmd`, `endYmd`, `skinYn`, `sexCd`. 날짜는 하루씩 조회하며 기간 합산값을 일별 가격으로 사용하지 않습니다. 서버 연결은 `/api/status`로 설정 유무만 확인하고 `/api/prices`에서 실제로 호출합니다. 서버 응답은 허용한 가격 필드만 반환합니다.
 
@@ -39,3 +39,4 @@ npm run build
 샘플은 제공된 2016-01-20 암컷·탕박 응답이며 최신 시세가 아닙니다. 조회 자료는 해당 브라우저의 localStorage에 저장됩니다. 다른 기기와 자동 동기화하지 않으며 JSON 내보내기로 백업할 수 있습니다. 같은 날짜·성별·돈피·등급은 갱신합니다. 미거래와 누락은 0원으로 대체하지 않습니다.
 
 가격은 원/kg, 두수는 두입니다. 이전 기록 대비는 반드시 직전 경매일 대비를 의미하지 않습니다. 당일 잠정 자료는 다음 날 재조회해 갱신할 수 있습니다. 서버는 동일 조건 응답을 최대 10분 캐시합니다. 정기 자동 수집은 아직 설정되어 있지 않습니다.
+
